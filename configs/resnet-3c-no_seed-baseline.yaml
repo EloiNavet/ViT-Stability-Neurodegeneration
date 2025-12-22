@@ -1,0 +1,308 @@
+# ================================================================
+# MODEL CONFIGURATION
+# ================================================================
+ARCHITECTURE:
+  desc: Model architecture to use (Swin, SwinDPL, MedViT, ViT, ResNet).
+  value: "ResNet"
+
+IMG_SIZE:
+  desc: Input image resolution dimensions [height, width, depth].
+  value: [144, 168, 144]
+
+RESHAPE_SIZE:
+  desc:
+    Reshape input volumes before patching [height, width, depth] (False to disable).
+    Typically 
+  value: False
+
+PATCH_SHAPE:
+  desc: Patch dimensions for tokenization [height, width, depth].
+    
+  value: [8, 8, 8]
+
+EMBED_DIM:
+  desc: Embedding dimension for the transformer. ViTS=384; Other=96.
+  value: 96
+
+DEPTH:
+  desc: Number of transformer blocks in each stage. 
+  value: [2, 2, 6, 2]
+
+HEADS:
+  desc: Number of attention heads in each stage. 
+  value: [3, 6, 12, 24]
+
+WINDOW_SIZE:
+  desc: Size of attention windows [height, width, depth].
+  value: [6, 7, 6]
+
+MLP_RATIO:
+  desc: MLP hidden dim / embedding dim ratio.
+  value: 4
+
+QKV_BIAS:
+  desc: Whether to use bias for QKV projections.
+  value: True
+
+PATCH_NORM:
+  desc: Whether to use normalization after patch embedding.
+  value: True
+
+POST_NORM:
+  desc: "Use post-attention normalization (apply norm after attention/MLP) instead of pre-norm (apply norm before). Only affects: Swin, ViT. Other architectures use their default: other architectures have fixed defaults."
+  value: False
+
+NORM_LAYER:
+  desc: Type of normalization layer ("nn.LayerNorm" or "DynamicTanh").
+  value: "nn.LayerNorm"
+
+USE_CHECKPOINT:
+  desc: Use gradient checkpointing to save memory.
+  value: False
+
+# ================================================================
+# REGULARIZATION & DROPOUT
+# ================================================================
+DROPOUT:
+  desc: Dropout rate in classification head
+  value: 0.1
+
+ATTENTION_DROPOUT:
+  desc: Dropout rate for attention.
+  value: 0
+
+STOCHASTIC_DEPTH_PROB:
+  desc: Stochastic depth (DropPath) rate.
+  value: 0.15
+
+USE_SHAKEDROP:
+  desc: Use ShakeDrop instead of DropPath for residuals.
+  value: False
+
+SHAKEDROP_ALPHA_RANGE:
+  desc: Range for random alpha scaling in ShakeDrop [low, high].
+  value: [-1.0, 1.0]
+
+# ================================================================
+# STABLE TRANSFORMS (DeepScaleLM)
+# ================================================================
+ENABLE_STABLE:
+  desc: Enable DeepScaleLM-style stable transforms (fully-normalized residuals + stable init), see https://arxiv.org/pdf/2403.09635
+  value: False
+
+STABLE_K:
+  desc: Scaling factor for stable residuals (β² = k / N^α), recommended 2.0.
+  value: 2.0
+
+STABLE_ALPHA:
+  desc: Depth exponent for stable residuals (α=1.0 balances stability vs expressivity, α>1 increases stability but may reduce expressivity).
+  value: 1.0
+
+# ================================================================
+# LAYERSCALE (Touvron et al., ICCV 2021)
+# ================================================================
+LAYER_SCALE:
+  desc: Enable LayerScale for stabilizing deep transformers (learnable per-channel scaling after each residual branch). Set to True to enable, False to disable.
+  value: False
+
+LAYER_SCALE_INIT_VALUE:
+  desc: Initial value for LayerScale gamma parameters (typical range 1e-5 to 1e-6 for very deep networks). Only used if LAYER_SCALE=True.
+  value: 0.1
+
+# ================================================================
+# TRAINING CONFIGURATION
+# ================================================================
+SEED:
+  desc: Global seed for full training reproducibility across Python, NumPy, PyTorch, and data loading (set to False to disable).
+  value: False
+
+BATCH_SIZE:
+  desc: Number of samples per batch per GPU .
+  value: 12
+
+EFFECTIVE_BATCH_SIZE:
+  desc: Desired effective batch size across GPUs and gradient accumulation.
+  value: 128
+
+STEPS:
+  desc: Total number of training steps.
+  value: 2500
+
+# --- Learning Rate ---
+LR_BASE:
+  desc: Initial learning rate.
+  value: 0.0003
+
+LR_FINAL:
+  desc: Final learning rate after scheduler decay.
+  value: 0.00001
+
+LR_WARMUP:
+  desc: Warmup steps for learning rate.
+  value: 50
+
+# --- Weight Decay ---
+WD_BASE:
+  desc: Initial weight decay.
+  value: 0.05
+
+WD_FINAL:
+  desc: Final weight decay after scheduler decay.
+  value: 0.0001
+
+WD_WARMUP:
+  desc: Warmup steps for weight decay.
+  value: 50
+
+# --- Precision & Sync ---
+FP16:
+  desc: Use mixed precision training.
+  value: True
+
+USE_SYNC_BN:
+  desc: Use synchronized BatchNorm (for multi-GPU).
+  value: True
+
+# --- Gradient ---
+GRADIENT_CLIP:
+  desc: Maximum gradient norm (False to disable).
+  value: False
+
+# --- EMA for network weights ---
+USE_EMA:
+  desc: Use EMA of model weights.
+  value: False
+
+EMA_DECAY:
+  desc: EMA decay rate.
+  value: 0.999
+
+EMA_N_MODELS:
+  desc: Number of models to keep in EMA ensemble.
+  value: 3
+
+UPDATE_BN_STATS:
+  desc: Update BN stats for EMA model.
+  value: True
+
+# ================================================================
+# MODEL SAVING & EARLY STOPPING
+# ================================================================
+KEEP_BEST_N:
+  desc: Number of best models to keep (False = single best).
+  value: 10
+
+METRIC_BEST_MODEL:
+  desc: Metric to use for selecting best models ('loss', 'acc', 'bacc', 'mcc', 'roc_auc', 'pr_auc', 'macro_f1'). For 'loss', lower is better; for others, higher is better.
+  value: "loss"
+
+SAVE_EVERY:
+  desc: Save model every N epochs (False to disable periodic saving).
+  value: False
+
+VALIDATION_FREQUENCY:
+  desc: Frequency (in steps) for validation.
+  value: 5
+
+EARLY_STOPPING_PATIENCE:
+  desc: Number of steps without improvement before stopping (False to disable).
+  value: 300
+
+EARLY_STOPPING_METRIC:
+  desc: Metric to monitor for early stopping ('loss', 'acc', 'bacc', 'mcc', 'roc_auc', 'pr_auc', 'macro_f1').
+  value: "loss"
+
+EARLY_STOPPING_MIN_DELTA:
+  desc: Minimum improvement in monitored metric to qualify as an improvement (absolute value).
+  value: 0.0005
+
+# ================================================================
+# DATA & CROSS-VALIDATION
+# ================================================================
+KFOLD:
+  desc: Number of folds.
+  value: 10
+
+FOLD:
+  desc: Current fold (0-indexed).
+  value: 0
+
+SPLIT:
+  desc: Train/val/test ratio. Must sum to KFOLD.
+  value: [7, 2, 1]
+
+DISEASES:
+  desc: Disease classes accronyms.
+  value: ["CN", "AD", "FTD"]
+
+# ================================================================
+# DATA AUGMENTATION
+# ================================================================
+USE_EXTENDED_DATA_AUGMENTATION:
+  desc: Use extended data augmentation (True) or minimal (False).
+  value: False
+
+USE_MIXUP:
+  desc: Use MRIMixUp augmentation. Mutually exclusive with USE_CUTMIX.
+  value: False
+
+MIXUP_ALPHA:
+  desc: Alpha parameter for Beta distribution in MixUp.
+  value: 0.3
+
+MIXUP_PROB:
+  desc: Probability of applying MixUp.
+  value: 0.5
+
+USE_CUTMIX:
+  desc: Use MRICutMix augmentation. Mutually exclusive with USE_MIXUP.
+  value: False
+
+CUTMIX_ALPHA:
+  desc: Alpha parameter for Beta distribution in CutMix (controls patch size).
+  value: 1.0
+
+CUTMIX_PROB:
+  desc: Probability of applying CutMix.
+  value: 0.5
+
+# ================================================================
+# LABEL SMOOTHING
+# ================================================================
+LABEL_SMOOTHING:
+  desc: Label smoothing factor in [0, 1) or False to disable. Redistributes probability mass from target class to all classes uniformly, preventing overconfident predictions. Typical values are 0.1-0.2. Compatible with MixUp and soft targets.
+  value: False
+
+# ================================================================
+# SHARPNESS-AWARE MINIMIZATION (SAM)
+# ================================================================
+USE_SAM:
+  desc: Use Sharpness-Aware Minimization optimizer.
+  value: False
+
+SAM_RHO:
+  desc: Neighborhood size parameter for SAM (0.05-0.1 typical).
+  value: 0.05
+
+SAM_ADAPTIVE:
+  desc: Use adaptive (element-wise) SAM.
+  value: False
+
+# ================================================================
+# DATA LOADING & PERFORMANCE OPTIMIZATION
+# ================================================================
+USE_BALANCED_SAMPLER:
+  desc: Use balanced sampler to address class imbalance (samples according to inverse class frequency).
+  value: False
+
+PRELOAD_DATA:
+  desc: Preload entire dataset into memory (only for small datasets).
+  value: False
+
+NUM_WORKERS:
+  desc: Number of dataloader workers.
+  value: 10
+
+PREFETCH_FACTOR:
+  desc: Number of batches to prefetch per worker (higher = more memory but better throughput).
+  value: 8
