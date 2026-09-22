@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the MIDL 2026 paper below."
+title: "ViT-Stability-Neurodegeneration"
+type: software
+authors:
+  - family-names: Navet
+    given-names: Eloi
+  - family-names: Giraud
+    given-names: Rémi
+  - family-names: Mansencal
+    given-names: Boris
+  - family-names: Coupé
+    given-names: Pierrick
+repository-code: "https://github.com/EloiNavet/ViT-Stability-Neurodegeneration"
+url: "https://proceedings.mlr.press/v315/navet26a.html"
+license: MIT
+preferred-citation:
+  type: article
+  authors:
+    - family-names: Navet
+      given-names: Eloi
+    - family-names: Giraud
+      given-names: Rémi
+    - family-names: Mansencal
+      given-names: Boris
+    - family-names: Coupé
+      given-names: Pierrick
+  title: "On the Stability and Robustness of Vision Transformers for Neurodegenerative Disease Classification"
+  journal: "Proceedings of Machine Learning Research"
+  volume: 315
+  start: 4518
+  end: 4554
+  year: 2026
+  url: "https://proceedings.mlr.press/v315/navet26a.html"
