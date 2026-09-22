@@ -22,7 +22,7 @@ We investigate a cumulative stabilization framework spanning **data augmentation
 **OpenReview:** [MiS54B5arR](https://openreview.net/forum?id=MiS54B5arR)
 
 <p align="center">
-  <img src="assets/mcc_f1.webp" alt="Cumulative stabilization pipeline showing MCC, Macro-F1, and instability intervals across training and inference strategies." width="900">
+  <img src="assets/mcc_f1.png" alt="Cumulative stabilization pipeline showing MCC, Macro-F1, and instability intervals across training and inference strategies." width="900">
 </p>
 <p align="center"><em>Cumulative stabilization across training and inference strategies. Shaded regions indicate the instability interval.</em></p>
 
