@@ -4,7 +4,8 @@ Official PyTorch training framework for 3D Vision Transformers on brain MRI, acc
 
 This repository provides the **stabilization protocols** (augmentation, optimization strategies, uncertainty quantification) described in the study, allowing reproduction of the training dynamics and stability analysis on standard architectures.
 
-**Paper Status:** Under Review 
+**Paper Status:** Published at MIDL 2026  
+**PMLR:** [https://proceedings.mlr.press/v315/navet26a.html](https://proceedings.mlr.press/v315/navet26a.html)  
 **OpenReview:** [https://openreview.net/forum?id=MiS54B5arR](https://openreview.net/forum?id=MiS54B5arR)
 
 ## Note on code availability
@@ -36,24 +37,25 @@ This repository focuses on the **stabilization framework** proposed in the paper
 If you use this framework or the stabilization protocols in your research, please cite:
 
 ```bibtex
-@inproceedings{navet2025on,
-  title={On the Stability and Robustness of Vision Transformers for Neurodegenerative Disease Classification},
-  author={Eloi Navet and R{\'e}mi Giraud and Boris Mansencal and Pierrick Coupe},
-  booktitle={Submitted to Medical Imaging with Deep Learning - Validation Papers},
-  year={2025},
-  url={[https://openreview.net/forum?id=MiS54B5arR](https://openreview.net/forum?id=MiS54B5arR)},
-  note={under review}
+@InProceedings{pmlr-v315-navet26a,
+  title = {On the Stability and Robustness of Vision Transformers for Neurodegenerative Disease Classification},
+  author = {Navet, Eloi and Giraud, R{\'e}mi and Mansencal, Boris and Coup{\'e}, Pierrick},
+  booktitle = {Proceedings of The 9th International Conference on Medical Imaging with Deep Learning},
+  pages = {4518--4554},
+  year = {2026},
+  volume = {315},
+  series = {Proceedings of Machine Learning Research},
+  publisher = {PMLR},
+  url = {https://proceedings.mlr.press/v315/navet26a.html}
 }
-
 ```
 
 ## Installation
 
 ```bash
-git clone https://github.com/EloiNavet/TransformerTraining.git
-cd TransformerTraining
+git clone https://github.com/EloiNavet/ViT-Stability-Neurodegeneration.git
+cd ViT-Stability-Neurodegeneration
 pip install -r requirements.txt
-
 ```
 
 **Requirements**: Python ≥3.9, PyTorch ≥2.0, CUDA ≥11.8
@@ -98,7 +100,6 @@ fold_K-1.csv
     --runname my-experiment \
     --cuda-devices 0,1 \
     --config configs/swin-5c-no_seed-baseline.yaml
-
 ```
 
 **Options**:
@@ -114,7 +115,6 @@ python -m eval.eval_transformer \
     --training-csv-dir /path/to/Kfold_CV/ \
     --intermediate-dir /path/to/cache_dir/ \
     --checkpoints /path/to/run_dir/model_<wandb_id>_<fold>_best*.pt
-
 ```
 
 ## Reproducibility Checklist
@@ -150,13 +150,12 @@ Key parameters:
 ├── regularization/     # SAM, Label Smoothing, ShakeDrop
 ├── configs/            # Experiment configurations
 └── scripts/            # Shell scripts for training
-
 ```
 
 ## Datasets
 
 Based on: **ADNI**, **ALLFTD**, **NIFD**, **NACC** cohorts.  
-Due to data usage agreements, we cannot share the raw data, but subject splits will be provided for reproducibility (upon acceptance).
+Due to data usage agreements, the raw data cannot be distributed with this repository.
 
 ## License
 
