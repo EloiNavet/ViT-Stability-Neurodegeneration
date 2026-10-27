@@ -2,23 +2,21 @@
 
 import os
 import warnings
-from typing import Dict, Iterable, List, Union
+from collections.abc import Iterable
 
 import numpy as np
 from joblib import Parallel, delayed
-from tqdm.auto import tqdm
-
-
 from sklearn.metrics import (
-    balanced_accuracy_score,
-    roc_auc_score,
     accuracy_score,
+    average_precision_score,
+    balanced_accuracy_score,
     classification_report,
     confusion_matrix,
-    average_precision_score,
     matthews_corrcoef,
+    roc_auc_score,
 )
 from sklearn.preprocessing import label_binarize
+from tqdm.auto import tqdm
 
 
 def _compute_ece(y_true, y_pred_probs, correct_mask=None, n_bins=15):
@@ -295,8 +293,8 @@ def compute_bootstrap_metrics(
     confidence: float = 0.95,
     random_state: int = 42,
     n_jobs: int = -1,
-    top_n: Union[int, Iterable[int], None] = None,
-) -> Dict[str, Dict[str, float]]:
+    top_n: int | Iterable[int] | None = None,
+) -> dict[str, dict[str, float]]:
     """
     Compute bootstrap confidence intervals for classification metrics using parallel processing.
 
@@ -321,7 +319,6 @@ def compute_bootstrap_metrics(
         Dictionary containing mean, lower, and upper bounds for each metric
     """
 
-    np.random.seed(random_state)
     n_samples = len(y_true)
 
     # y_true must be int type
@@ -338,7 +335,7 @@ def compute_bootstrap_metrics(
     classes = np.unique(y_true)
 
     # Normalize and validate top_n(s)
-    top_ns: List[int] = []
+    top_ns: list[int] = []
     if top_n is not None:
         if isinstance(top_n, int):
             top_ns = [top_n]
@@ -357,7 +354,7 @@ def compute_bootstrap_metrics(
         # Seed this iteration deterministically based on the global seed and iteration index
         # This ensures reproducibility even with parallel processing
         iteration_seed = (random_state + iteration_idx) % (2**32)
-        np.random.seed(iteration_seed)
+        rng = np.random.RandomState(iteration_seed)
 
         # Generate bootstrap indices with retry logic for rare classes
         # Only ensure classes that are actually present in the data appear in bootstrap
@@ -367,7 +364,7 @@ def compute_bootstrap_metrics(
 
         while not all_present_classes_in_sample and attempt < max_attempts:
             # Generate bootstrap indices
-            indices = np.random.choice(n_samples, n_samples, replace=True)
+            indices = rng.choice(n_samples, n_samples, replace=True)
 
             # Get bootstrap samples
             bs_y_true = y_true[indices]
@@ -384,7 +381,7 @@ def compute_bootstrap_metrics(
             strat_indices = []
             for c in classes:
                 class_indices = np.where(y_true == c)[0]
-                class_sample = np.random.choice(
+                class_sample = rng.choice(
                     class_indices,
                     max(1, int(len(class_indices) * n_samples / len(y_true))),
                     replace=True,
@@ -392,13 +389,13 @@ def compute_bootstrap_metrics(
                 strat_indices.extend(class_sample)
 
             # Shuffle the indices
-            np.random.shuffle(strat_indices)
+            rng.shuffle(strat_indices)
             # Trim or extend to match original sample size
             if len(strat_indices) > n_samples:
                 strat_indices = strat_indices[:n_samples]
             else:
                 # Append random samples to reach n_samples
-                additional = np.random.choice(
+                additional = rng.choice(
                     range(n_samples), n_samples - len(strat_indices), replace=True
                 )
                 strat_indices.extend(additional)
@@ -425,11 +422,11 @@ def compute_bootstrap_metrics(
                 roc_auc_val = roc_auc_score(
                     bs_y_true_bin,
                     bs_y_pred_proba,
-                    average="weighted",
+                    average="macro",
                     multi_class="ovr",
                 )
                 pr_auc_val = average_precision_score(
-                    bs_y_true_bin, bs_y_pred_proba, average="weighted"
+                    bs_y_true_bin, bs_y_pred_proba, average="macro"
                 )
 
         # Calculate metrics
@@ -654,26 +651,27 @@ def compute_bootstrap_metrics(
 
     for result in results_list:
         for metric_name, value in result.items():
-            if metric_name in [
-                "accuracy",
-                "balanced_accuracy",
-                "roc_auc",
-                "pr_auc",
-                "mcc",
-                "ece",
-                "mce",
-                "brier_score",
-                "softmax_entropy",
-                "gini",
-                "renyi",
-                "macro_f1",
-                "macro_prec",
-                "macro_sens",
-            ]:
-                metrics[metric_name].append(value)
-            elif metric_name == "confusion_matrix":
-                metrics[metric_name].append(value)
-            elif metric_name == "classification_report":
+            if (
+                metric_name
+                in [
+                    "accuracy",
+                    "balanced_accuracy",
+                    "roc_auc",
+                    "pr_auc",
+                    "mcc",
+                    "ece",
+                    "mce",
+                    "brier_score",
+                    "softmax_entropy",
+                    "gini",
+                    "renyi",
+                    "macro_f1",
+                    "macro_prec",
+                    "macro_sens",
+                ]
+                or metric_name == "confusion_matrix"
+                or metric_name == "classification_report"
+            ):
                 metrics[metric_name].append(value)
             elif metric_name in ["precision", "recall", "f1", "brier_class"]:
                 for class_idx, class_value in value.items():

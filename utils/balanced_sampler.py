@@ -12,12 +12,13 @@ DistributedWeightedSampler
 """
 
 import math
+from collections.abc import Iterator
+
+import numpy as np
+import pandas as pd
 import torch
 import torch.distributed as dist
 from torch.utils.data import Sampler
-from typing import Optional, Iterator
-import pandas as pd
-import numpy as np
 
 
 def compute_class_weights(
@@ -208,10 +209,10 @@ class DistributedWeightedSampler(Sampler):
         self,
         dataset,
         weights: np.ndarray | torch.Tensor,
-        num_samples: Optional[int] = None,
+        num_samples: int | None = None,
         replacement: bool = True,
-        num_replicas: Optional[int] = None,
-        rank: Optional[int] = None,
+        num_replicas: int | None = None,
+        rank: int | None = None,
         seed: int = 0,
         drop_last: bool = False,
     ):
@@ -367,11 +368,11 @@ class DistributedWeightedSampler(Sampler):
 def create_balanced_sampler(
     dataset,
     metadata: pd.DataFrame,
-    num_samples: Optional[int] = None,
+    num_samples: int | None = None,
     diagnosis_column: str = "Diagnosis",
     seed: int = 0,
-    num_replicas: Optional[int] = None,
-    rank: Optional[int] = None,
+    num_replicas: int | None = None,
+    rank: int | None = None,
     drop_last: bool = False,
 ) -> DistributedWeightedSampler:
     """

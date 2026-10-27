@@ -3,6 +3,7 @@
 import argparse
 import datetime
 import json
+import logging
 import math
 import os
 import queue
@@ -12,14 +13,13 @@ import shutil
 import sys
 import threading
 import warnings
+from collections.abc import Sequence
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
 import torch.distributed as dist
-import torch.nn as nn
 import wandb as w
 import yaml
 from monai.transforms import (
@@ -45,18 +45,19 @@ from sklearn.metrics import (
     matthews_corrcoef,
     roc_auc_score,
 )
+from torch import nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from dataset.dataset import MRICutMix, MRIMixUp, NormalDataset
 from dataset.preprocessing import DataPrepa
-from regularization import LabelSmoothingLoss, SAM
+from regularization import SAM, LabelSmoothingLoss
 from utils import (
+    _MAX_UINT32,
     AdaptiveGaussianNoise,
     AdaptiveRicianNoise,
     EMAModel,
-    _MAX_UINT32,
     cosine_scheduler_steps,
     count_parameters,
     dir_path,
@@ -72,7 +73,6 @@ from utils import (
     seed_everything,
 )
 
-
 # Suppress non-deterministic warnings when using torch.use_deterministic_algorithms(warn_only=True)
 _NONDETERMINISTIC_OPS = [
     "adaptive_avg_pool3d_backward_cuda",
@@ -86,6 +86,8 @@ for op in _NONDETERMINISTIC_OPS:
 warnings.filterwarnings(
     "ignore", category=DeprecationWarning, module="ignite.handlers.checkpoint"
 )
+
+logger = logging.getLogger(__name__)
 
 # TF32 kept on to mirror paper runs; disabling changes numerics on Ampere+ GPUs.
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -228,8 +230,9 @@ class AsyncCheckpointSaver:
                 self.queue.task_done()
             except queue.Empty:
                 continue
-            except Exception as e:
-                print(f"[AsyncSaver] Error saving checkpoint: {e}")
+            except Exception:
+                # The saver thread must survive a failed save and keep serving the queue.
+                logger.exception("[AsyncSaver] Error saving checkpoint")
                 self.queue.task_done()
 
     def save_checkpoint(self, checkpoint: dict, save_path: Path):
@@ -279,8 +282,8 @@ class AsyncCheckpointSaver:
 def set_hyperparams(
     optimizer: torch.optim.Optimizer,
     iterator: int,
-    lr_scheduler: Optional[Sequence[float]] = None,
-    wd_scheduler: Optional[Sequence[float]] = None,
+    lr_scheduler: Sequence[float] | None = None,
+    wd_scheduler: Sequence[float] | None = None,
 ) -> None:
     """Set learning rate and weight decay for the optimizer.
 
@@ -307,6 +310,45 @@ def set_hyperparams(
             param_group["lr"] = lr_scheduler[iterator]
         if i == 0 and wd_scheduler is not None:  # only the first group is regularized
             param_group["weight_decay"] = wd_scheduler[iterator]
+
+
+def _get_training_checkpoint_fold(
+    checkpoint_path: Path, checkpoint: dict
+) -> int | None:
+    """Return fold provenance stored in a training checkpoint or its legacy name."""
+    stored_fold = checkpoint.get("fold")
+    if stored_fold is not None:
+        try:
+            return int(stored_fold)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Checkpoint {checkpoint_path} contains an invalid fold value: {stored_fold!r}"
+            ) from exc
+
+    legacy_match = re.match(r"^model_[^_]+_(\d+)(?:_|$)", checkpoint_path.stem)
+    if legacy_match:
+        return int(legacy_match.group(1))
+    return None
+
+
+def _validate_training_checkpoint_fold(
+    checkpoint_path: Path, checkpoint: dict, requested_fold: int
+) -> None:
+    """Reject cross-fold resume and warn when legacy provenance is unavailable."""
+    checkpoint_fold = _get_training_checkpoint_fold(checkpoint_path, checkpoint)
+    if checkpoint_fold is None:
+        warnings.warn(
+            f"Cannot verify fold provenance for legacy checkpoint {checkpoint_path}; "
+            f"continuing with requested fold {requested_fold}.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return
+    if checkpoint_fold != requested_fold:
+        raise ValueError(
+            f"Checkpoint fold {checkpoint_fold} does not match requested fold "
+            f"{requested_fold}: {checkpoint_path}"
+        )
 
 
 def load_checkpoint(
@@ -415,6 +457,9 @@ def load_checkpoint(
 
     # For training checkpoints, also restore optimizer and training state
     if is_training_checkpoint:
+        _validate_training_checkpoint_fold(
+            checkpoint_path, checkpoint, requested_fold=int(w.config.FOLD)
+        )
         # Handle SAM optimizer state dict loading
         if isinstance(optimizer, SAM):
             optimizer.base_optimizer.load_state_dict(checkpoint["optimizer"])
@@ -437,7 +482,8 @@ def load_checkpoint(
     else:
         # For pretrained checkpoints, start fresh training
         start_step = 0
-        best_loss = float("inf")
+        best_model_metric = getattr(w.config, "METRIC_BEST_MODEL", "loss").lower()
+        best_loss = float("inf") if best_model_metric == "loss" else float("-inf")
         history = []
         sampler_epoch = 0
         best_metric_for_early_stopping = float("inf")
@@ -455,8 +501,8 @@ def load_checkpoint(
 
 
 def compute_metrics(
-    preds: torch.Tensor | List[np.ndarray], gts: torch.Tensor | List[np.ndarray]
-) -> Tuple[float, float, float, float, float, np.ndarray, float]:
+    preds: torch.Tensor | list[np.ndarray], gts: torch.Tensor | list[np.ndarray]
+) -> tuple[float, float, float, float, float, np.ndarray, float]:
     """Optimized metric computation.
 
     Parameters
@@ -572,7 +618,7 @@ def compute_distributed_metrics(
     all_preds: torch.Tensor,
     all_gts: torch.Tensor,
     device: torch.device,
-) -> Tuple[float, float, float, float, np.ndarray, float]:
+) -> tuple[float, float, float, float, np.ndarray, float]:
     """Compute metrics in distributed setting with memory-efficient aggregation.
 
     Instead of gathering all predictions/labels, we compute per-class statistics
@@ -651,7 +697,7 @@ def validation(
     model: nn.Module,
     val_loader: DataLoader,
     loss_fn: nn.Module,
-) -> Tuple[float, float, float, float, float, float, np.ndarray, float]:
+) -> tuple[float, float, float, float, float, float, np.ndarray, float]:
     """Validate the model on the validation dataset.
 
     Parameters
@@ -756,8 +802,8 @@ def save_checkpoint(
     history: list,
     loss: float,
     save_path: Path,
-    ema: Optional[EMAModel] = None,
-    async_saver: Optional[AsyncCheckpointSaver] = None,
+    ema: EMAModel | None = None,
+    async_saver: AsyncCheckpointSaver | None = None,
     sampler_epoch: int = 0,
     best_metric_for_early_stopping: float = float("inf"),
 ) -> None:
@@ -807,6 +853,7 @@ def save_checkpoint(
     checkpoint = {
         "model": ema.model_state if ema is not None else model.state_dict(),
         "optimizer": optimizer_state,
+        "fold": int(w.config.FOLD),
         "weight_decay": param_groups[0]["weight_decay"],
         "lr": param_groups[0]["lr"],
         "step": step,
@@ -821,19 +868,19 @@ def save_checkpoint(
 
 
 def save_best_n_models(
-    best_models: Dict[int, float],
+    best_models: dict[int, float],
     model: nn.Module,
     optimizer: torch.optim.Optimizer,
     step: int,
     cur_metric: float,
     history: list,
     save_dir: Path,
-    ema: Optional[EMAModel],
-    async_saver: Optional[AsyncCheckpointSaver] = None,
+    ema: EMAModel | None,
+    async_saver: AsyncCheckpointSaver | None = None,
     sampler_epoch: int = 0,
     best_metric_for_early_stopping: float = float("inf"),
     metric_mode: str = "min",
-) -> Dict[int, float]:
+) -> dict[int, float]:
     """
     Save the N best models based on a validation metric.
 
@@ -1242,14 +1289,15 @@ def training_loops(
                         else:
                             fp16_scaler.scale(batch_loss).backward()
 
-                if torch.isnan(batch_loss) or torch.isnan(y_pred).any():
-                    if get_rank() == 0:
-                        print(
-                            f"WARNING at step {effective_step}: NaN detected in SAM second pass"
-                        )
-                        print(
-                            f"batch_loss: {batch_loss.item()}, y_pred has NaN: {torch.isnan(y_pred).any()}"
-                        )
+                if (
+                    torch.isnan(batch_loss) or torch.isnan(y_pred).any()
+                ) and get_rank() == 0:
+                    print(
+                        f"WARNING at step {effective_step}: NaN detected in SAM second pass"
+                    )
+                    print(
+                        f"batch_loss: {batch_loss.item()}, y_pred has NaN: {torch.isnan(y_pred).any()}"
+                    )
 
                 sam_micro_batches.clear()
 
@@ -1323,7 +1371,7 @@ def training_loops(
 
             if get_rank() == 0:
                 print(
-                    f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} Step {effective_step}",
+                    f"{datetime.datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')} Step {effective_step}",
                     f"\n\tVal: loss {val_loss:.4f}, acc {val_acc:.4f}, bacc {val_bacc:.4f}, roc_auc {val_roc_auc:.4f}, pr_auc {val_pr_auc:.4f}, macro_f1 {val_macro_f1:.4f}, mcc {val_mcc:.4f}",
                 )
 
@@ -1627,8 +1675,8 @@ def train(save_dir: Path, fold: int) -> None:
         dataloader_seed = (int(base_seed_value) + get_rank()) % _MAX_UINT32
 
     worker_init_fn = None
-    train_generator: Optional[torch.Generator] = None
-    val_generator: Optional[torch.Generator] = None
+    train_generator: torch.Generator | None = None
+    val_generator: torch.Generator | None = None
 
     if dataloader_seed is not None:
         if get_rank() == 0:
@@ -1658,8 +1706,8 @@ def train(save_dir: Path, fold: int) -> None:
     # Build training transforms based on USE_EXTENDED_DATA_AUGMENTATION
     if hasattr(w.config, "IS_DUNG_TRANSFORMS") and w.config.IS_DUNG_TRANSFORMS:
         from monai.transforms import (
-            OneOf,
             Identity,
+            OneOf,
             RandSpatialCrop,
         )
 
@@ -1756,7 +1804,7 @@ def train(save_dir: Path, fold: int) -> None:
         try:
             json.dumps(obj)
             return obj
-        except Exception:
+        except (TypeError, ValueError, OverflowError):
             return str(obj)
 
     def get_transform_details(transform):
@@ -1859,9 +1907,9 @@ def train(save_dir: Path, fold: int) -> None:
     if w.config.USE_BALANCED_SAMPLER:
         # Import balanced sampler utilities
         from utils.balanced_sampler import (
+            DistributedWeightedSampler,
             compute_class_weights,
             compute_sample_weights,
-            DistributedWeightedSampler,
         )
 
         if get_rank() == 0:
@@ -1935,7 +1983,7 @@ def train(save_dir: Path, fold: int) -> None:
         "batch_size": w.config.BATCH_SIZE,
         "num_workers": w.config.NUM_WORKERS,
         "pin_memory": True,
-        "persistent_workers": True if w.config.NUM_WORKERS > 0 else False,
+        "persistent_workers": w.config.NUM_WORKERS > 0,
         "prefetch_factor": (
             w.config.PREFETCH_FACTOR if w.config.NUM_WORKERS > 0 else None
         ),
@@ -2349,7 +2397,7 @@ if __name__ == "__main__":
 
     num_gpus = torch.cuda.device_count()
     if torch.cuda.is_available() and num_gpus > 1:
-        local_rank = int(os.environ.get("LOCAL_RANK", 0))
+        local_rank = int(os.environ.get("LOCAL_RANK", "0"))
         torch.cuda.set_device(local_rank)
         device = torch.device(f"cuda:{local_rank}")
         os.environ["WANDB_MODE"] = "disabled" if local_rank != 0 else args.wandb_mode
@@ -2400,8 +2448,14 @@ if __name__ == "__main__":
         with open(args.config, "r") as f:
             config = yaml.safe_load(f)
 
+        if not isinstance(config, dict):
+            raise ValueError(
+                f"Configuration file must contain a mapping: {args.config}"
+            )
         for key, value in config.items():
-            wandb_config[key] = value["value"] if "value" in value else value
+            wandb_config[key] = (
+                value.get("value", value) if isinstance(value, dict) else value
+            )
 
         w.config.update(wandb_config, allow_val_change=True)
 
@@ -2413,16 +2467,11 @@ if __name__ == "__main__":
     w.config.update({"SEED": normalized_seed}, allow_val_change=True)
     global_seed = normalized_seed
 
-    if args.fold is not None and args.fold != wandb_config["FOLD"]:
-        if args.checkpoint is not None:
-            print(
-                f"Can't change fold when loading a checkpoint. Fold argument has been ignored and fold is set to {wandb_config['FOLD']}"
-            )
-        else:
-            wandb_config["FOLD"] = args.fold
-            w.config.update({"FOLD": args.fold}, allow_val_change=True)
-            if get_rank() == 0:
-                print(f"Changing fold from config default to {args.fold}.")
+    if args.fold is not None and args.fold != wandb_config.get("FOLD"):
+        wandb_config["FOLD"] = args.fold
+        w.config.update({"FOLD": args.fold}, allow_val_change=True)
+        if get_rank() == 0:
+            print(f"Using fold {args.fold} from command line argument.")
 
     # Only initialize distributed mode if more than one GPU is available
     if distributed:
@@ -2460,4 +2509,9 @@ if __name__ == "__main__":
     train(save_dir, fold=w.config.FOLD)
 
     if is_dist_avail_and_initialized():
-        dist.destroy_process_group()
+        dist.barrier()
+    try:
+        w.finish()
+    finally:
+        if is_dist_avail_and_initialized():
+            dist.destroy_process_group()

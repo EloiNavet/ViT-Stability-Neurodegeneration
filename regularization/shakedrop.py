@@ -3,8 +3,7 @@ Shake Drop from https://github.com/owruby/shake-drop_pytorch/blob/master/models/
 """
 
 import torch
-import torch.nn as nn
-from typing import Tuple
+from torch import nn
 
 
 class _ShakeDropFn(torch.autograd.Function):
@@ -54,7 +53,7 @@ class _ShakeDropFn(torch.autograd.Function):
     @staticmethod
     def backward(
         ctx, grad_output: torch.Tensor
-    ) -> Tuple[torch.Tensor, None, None, None, None]:
+    ) -> tuple[torch.Tensor, None, None, None, None]:
         if not ctx.training:
             p_drop = getattr(ctx, "p_drop", 0.5)
             return (1.0 - p_drop) * grad_output, None, None, None, None
@@ -83,7 +82,7 @@ class ShakeDrop(nn.Module):
     """
 
     def __init__(
-        self, p_drop: float = 0.5, alpha_range: Tuple[float, float] = (-1.0, 1.0)
+        self, p_drop: float = 0.5, alpha_range: tuple[float, float] = (-1.0, 1.0)
     ) -> None:
         super().__init__()
         self.p_drop = float(p_drop)

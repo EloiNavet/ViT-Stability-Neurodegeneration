@@ -6,25 +6,13 @@ MedViT V1: A Robust Vision Transformer for Generalized Medical Image Classificat
 """
 
 from functools import partial
-from typing import Dict, List, Tuple, Union
 
 import torch
-import torch.utils.checkpoint as checkpoint
 from einops import rearrange
 from timm.layers import DropPath
 from torch import nn
+from torch.utils import checkpoint
 
-from .modules.layerscale import create_layerscale
-from .modules.medvit_utils import (
-    NORM_EPS,
-    ConvBNReLU,
-    E_MHSA,
-    LocalityFeedForward,
-    MHCA,
-    PatchEmbed,
-    _make_divisible,
-    initialize_weights,
-)
 from regularization.shakedrop import ShakeDrop
 from utils.stable_init import (
     apply_stable_residual,
@@ -32,11 +20,23 @@ from utils.stable_init import (
     init_stable_model,
 )
 
+from .modules.layerscale import create_layerscale
+from .modules.medvit_utils import (
+    E_MHSA,
+    MHCA,
+    NORM_EPS,
+    ConvBNReLU,
+    LocalityFeedForward,
+    PatchEmbed,
+    _make_divisible,
+    initialize_weights,
+)
+
 # =============================================================================
 # MedViT V1 Configurations
 # =============================================================================
 
-_MEDVITV1_CONFIGS: Dict[str, Dict[str, Union[List[int], float]]] = {
+_MEDVITV1_CONFIGS: dict[str, dict[str, list[int] | float]] = {
     "S": {
         "stem_chs": [64, 32, 64],
         "depths": [3, 4, 10, 3],
@@ -92,7 +92,7 @@ class ECB(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        stride: Union[int, Tuple[int, int, int]] = 1,
+        stride: int | tuple[int, int, int] = 1,
         stochastic_depth_prob: float = 0.0,
         head_dim: int = 32,
         mlp_ratio: float = 3.0,
@@ -100,11 +100,11 @@ class ECB(nn.Module):
         stable_lam: float = 1.0,
         stable_beta: float = 0.0,
         use_shakedrop: bool = False,
-        shakedrop_alpha_range: Tuple[float, float] = (-1.0, 1.0),
+        shakedrop_alpha_range: tuple[float, float] = (-1.0, 1.0),
         layer_scale: bool = False,
         layer_scale_init_value: float = 1e-5,
     ) -> None:
-        super(ECB, self).__init__()
+        super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.enable_stable = enable_stable
@@ -251,7 +251,7 @@ class LTB(nn.Module):
         in_channels: int,
         out_channels: int,
         stochastic_depth_prob: float,
-        stride: Union[int, Tuple[int, int, int]] = 1,
+        stride: int | tuple[int, int, int] = 1,
         sr_ratio: int = 1,
         mlp_ratio: float = 2.0,
         head_dim: int = 32,
@@ -262,11 +262,11 @@ class LTB(nn.Module):
         stable_lam: float = 1.0,
         stable_beta: float = 0.0,
         use_shakedrop: bool = False,
-        shakedrop_alpha_range: Tuple[float, float] = (-1.0, 1.0),
+        shakedrop_alpha_range: tuple[float, float] = (-1.0, 1.0),
         layer_scale: bool = False,
         layer_scale_init_value: float = 1e-5,
     ) -> None:
-        super(LTB, self).__init__()
+        super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.mix_block_ratio = mix_block_ratio
@@ -367,7 +367,7 @@ class LTB(nn.Module):
             Output tensor of shape (B, C_out, D', H', W').
         """
         x = self.patch_embed(x)
-        B, C, D, H, W = x.shape
+        _B, _C, D, H, W = x.shape
 
         # E-MHSA path
         if not torch.onnx.is_in_onnx_export() and not self.is_bn_merged:
@@ -484,15 +484,15 @@ class MedViTV1(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        stem_chs: List[int],
-        depths: List[int],
-        dims: List[int],
+        stem_chs: list[int],
+        depths: list[int],
+        dims: list[int],
         stochastic_depth_prob: float,
         attention_dropout: float,
         dropout: float,
         num_classes: int,
-        strides: List[int],
-        sr_ratios: List[int],
+        strides: list[int],
+        sr_ratios: list[int],
         head_dim: int,
         mlp_ratio: float,
         mix_block_ratio: float,
@@ -501,11 +501,11 @@ class MedViTV1(nn.Module):
         stable_k: float = 2.0,
         stable_alpha: float = 1.0,
         use_shakedrop: bool = False,
-        shakedrop_alpha_range: Tuple[float, float] = (-1.0, 1.0),
+        shakedrop_alpha_range: tuple[float, float] = (-1.0, 1.0),
         layer_scale: bool = False,
         layer_scale_init_value: float = 1e-5,
     ) -> None:
-        super(MedViTV1, self).__init__()
+        super().__init__()
         self.use_checkpoint = use_checkpoint
         self.enable_stable = enable_stable
 

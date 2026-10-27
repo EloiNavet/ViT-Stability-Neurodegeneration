@@ -1,17 +1,18 @@
 import argparse
+import logging
 import os
 import pickle
-import logging
 import re
+import sys
 from glob import glob
+from pathlib import Path
+
 import pandas as pd
 import wandb as w
-from pathlib import Path
-import sys
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from utils import get_train_val_test, dir_path, file_path, compute_bootstrap_metrics
 from dataset.preprocessing import DataPrepaSVM, load_svm_features
+from utils import compute_bootstrap_metrics, dir_path, file_path, get_train_val_test
 
 logging.basicConfig(
     level=logging.INFO,
@@ -212,7 +213,16 @@ def main():
             scaler = pickle.load(f)
 
         def run_evaluation(
-            metadata: pd.DataFrame, data_root: Path, split_name: str, split_suffix: str
+            metadata: pd.DataFrame,
+            data_root: Path,
+            split_name: str,
+            split_suffix: str,
+            *,
+            classifier=classifier,
+            scaler=scaler,
+            model_path=model_path,
+            run_id=run_id,
+            fold=fold,
         ) -> dict | None:
             logger.info(f"=== {split_name} ===")
 
@@ -313,14 +323,13 @@ def main():
             w.log({"evaluation_metrics": table})
 
 
-
 if __name__ == "__main__":
     main()
 
 # Example usage:
-# python eval/eval_svm.py \\
-#   --training-csv-dir /path/to/10fold_CV/ \\
-#   --intermediate-dir /path/to/intermediate/svm/ \\
-#   --models-dir /path/to/saved_models/svm/experiment/ \\
-#   --eval-csv /path/to/test.csv \\
+# python eval/eval_svm.py \
+#   --training-csv-dir /path/to/10fold_CV/ \
+#   --intermediate-dir /path/to/intermediate/svm/ \
+#   --models-dir /path/to/saved_models/svm/experiment/ \
+#   --eval-csv /path/to/test.csv \
 #   --wandb-mode online

@@ -10,16 +10,15 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
-from typing import Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 import torch
-import torch.nn as nn
 import wandb as w
 import yaml
 from monai.transforms import Compose, NormalizeIntensity, Resize
 from monai.utils import set_determinism as monai_set_determinism
+from torch import nn
 from torch.utils.data import DataLoader
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
@@ -41,6 +40,7 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+logger = logging.getLogger(__name__)
 
 
 def get_args() -> argparse.Namespace:
@@ -317,7 +317,7 @@ def build_model(device: torch.device) -> nn.Module:
 
 def load_checkpoint(
     model: nn.Module, checkpoint_path: Path, device: torch.device
-) -> Dict:
+) -> dict:
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint["model"], strict=False)
     return checkpoint
@@ -327,7 +327,7 @@ def ensure_preprocessed(
     metadata: pd.DataFrame,
     preprocess_dir: Path,
     device: torch.device,
-    crop_size: Tuple[int, int, int],
+    crop_size: tuple[int, int, int],
 ) -> pd.DataFrame:
     preprocess_dir.mkdir(parents=True, exist_ok=True)
     if metadata.empty:
@@ -413,8 +413,8 @@ def evaluate_loader(
     device: torch.device,
     use_amp: bool,  # False
     use_tta: bool,  # False
-    tta_config: Dict,
-) -> Tuple[np.ndarray, np.ndarray]:
+    tta_config: dict,
+) -> tuple[np.ndarray, np.ndarray]:
     model.eval()
     preds, targets = [], []
 
@@ -476,7 +476,7 @@ def filter_synthetic(metadata: pd.DataFrame) -> pd.DataFrame:
 
 
 def remove_duplicates(
-    metadata: pd.DataFrame, logger: Optional[logging.Logger] = None
+    metadata: pd.DataFrame, logger: logging.Logger | None = None
 ) -> pd.DataFrame:
     """Remove duplicate subjects (based on 'Subject') and log how many were removed.
 
@@ -497,7 +497,7 @@ def remove_duplicates(
 
 def compute_bootstrap_from_predictions(
     preds: np.ndarray, targets: np.ndarray
-) -> Optional[Dict]:
+) -> dict | None:
     """Compute bootstrap metrics from predictions and targets.
 
     Returns None if predictions or targets are empty.
@@ -511,7 +511,7 @@ def compute_bootstrap_from_predictions(
 def log_metrics(
     logger: logging.Logger,
     split_name: str,
-    bootstrap_metrics: Dict,
+    bootstrap_metrics: dict,
     preds: np.ndarray,
     targets: np.ndarray,
 ) -> None:
@@ -582,7 +582,7 @@ def prepare_wandb_config(model_path: Path) -> Path:
             f"No W&B directory found for run id '{runname}' under {wandb_parent}"
         )
 
-    wandb_dir = sorted(candidates, key=lambda p: p.stem)[0]
+    wandb_dir = min(candidates, key=lambda p: p.stem)
 
     config_candidates = [
         wandb_dir / "files" / "config.yaml",
@@ -605,8 +605,8 @@ def evaluation(
     args: argparse.Namespace,
     model_path: Path,
     device: torch.device,
-    model_index: Optional[str] = None,
-) -> Tuple[pd.DataFrame, Optional[pd.DataFrame]]:
+    model_index: str | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame | None]:
     fname = model_path.stem
 
     # Determine output directory: either relative subfolder or checkpoint parent
@@ -633,7 +633,8 @@ def evaluation(
 
     logger = setup_logger(model_path, output_dir)
 
-    checkpoint_info = torch.load(model_path, map_location=device, weights_only=False)
+    model = build_model(device)
+    checkpoint_info = load_checkpoint(model, model_path, device)
     train_progress = checkpoint_info.get("step", checkpoint_info.get("epoch", 0))
     progress_label = "steps" if "step" in checkpoint_info else "epochs"
 
@@ -674,10 +675,6 @@ def evaluation(
         logger.info("In-domain Test distribution:")
         for cls, count in class_counts.items():
             logger.info(f"  {cls}: {count} samples ({count / len(test_df) * 100:.1f}%)")
-
-    # Build evaluation model (reload to ensure clean weights)
-    model = build_model(device)
-    load_checkpoint(model, model_path, device)
 
     val_loader = create_loader(preprocess_train_dir, val_df, args.batch_size)
     test_loader = create_loader(preprocess_train_dir, test_df, args.batch_size)
@@ -789,12 +786,12 @@ def evaluation(
 def log_metrics_to_wandb(
     logger: logging.Logger,
     model_path: Path,
-    val_bootstrap: Dict,
-    test_bootstrap: Dict,
-    od_bootstrap: Optional[Dict] = None,
-    id_csv_path: Optional[Path] = None,
-    od_csv_path: Optional[Path] = None,
-    model_index: Optional[str] = None,
+    val_bootstrap: dict,
+    test_bootstrap: dict,
+    od_bootstrap: dict | None = None,
+    id_csv_path: Path | None = None,
+    od_csv_path: Path | None = None,
+    model_index: str | None = None,
 ) -> None:
     """Log metrics to W&B as a table and upload prediction CSV files as artifacts.
 
@@ -809,7 +806,7 @@ def log_metrics_to_wandb(
         return round(value * 100, 2)
 
     # Helper function to create row with model index in split name
-    def create_row(split_name: str, bootstrap: Dict):
+    def create_row(split_name: str, bootstrap: dict):
         # Use OrderedDict-like approach by building in order
         from collections import OrderedDict
 
@@ -940,8 +937,10 @@ def log_metrics_to_wandb(
         except Exception:
             # Artifact doesn't exist yet, will create new
             logger.info("No existing table found, creating new one")
+            logger.debug("Artifact lookup failed", exc_info=True)
     except Exception:
         logger.info("Creating new evaluation metrics table")
+        logger.debug("Evaluation table lookup failed", exc_info=True)
 
     # Remove existing rows for this model_index to avoid duplicates
     if model_index and all_rows:
@@ -1068,6 +1067,8 @@ def main() -> None:
         with open(config_path, "r") as f:
             raw_config = yaml.safe_load(f)
 
+        if not isinstance(raw_config, dict):
+            raise TypeError(f"Configuration file must contain a mapping: {config_path}")
         config = {
             key: (
                 value["value"]
@@ -1118,7 +1119,7 @@ def main() -> None:
                 break  # Success, exit retry loop
             except (w.errors.CommError, TimeoutError) as e:
                 if attempt < max_retries - 1:
-                    logging.warning(
+                    logger.warning(
                         f"W&B init failed (attempt {attempt + 1}/{max_retries}): {e}. "
                         f"Retrying in {retry_delay}s..."
                     )
@@ -1127,7 +1128,7 @@ def main() -> None:
                     time.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
                 else:
-                    logging.error(
+                    logger.error(
                         f"W&B init failed after {max_retries} attempts. "
                         f"Continuing without W&B logging."
                     )

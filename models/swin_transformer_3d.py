@@ -1,12 +1,12 @@
 """3D Swin Transformer V1 for volumetric medical imaging."""
 
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from collections.abc import Callable
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 from timm.layers import DropPath, to_3tuple, trunc_normal_
+from torch import nn
 from torch.utils.checkpoint import checkpoint
 
 from models.modules.layerscale import create_layerscale
@@ -17,7 +17,7 @@ from utils.stable_init import (
     init_stable_model,
 )
 
-_SWIN_CONFIGS: Dict[str, Dict[str, Union[int, List[int]]]] = {
+_SWIN_CONFIGS: dict[str, dict[str, int | list[int]]] = {
     "T": {
         "patch_size": [4, 4, 4],
         "embed_dim": 96,
@@ -53,8 +53,8 @@ class MLP(nn.Sequential):
     def __init__(
         self,
         in_features: int,
-        hidden_features: Optional[int] = None,
-        out_features: Optional[int] = None,
+        hidden_features: int | None = None,
+        out_features: int | None = None,
         act_layer: Callable[..., nn.Module] = nn.GELU,
         drop: float = 0.0,
     ):
@@ -70,7 +70,7 @@ class MLP(nn.Sequential):
 
 
 def window_partition(
-    x: torch.Tensor, window_size: Tuple[int, int, int]
+    x: torch.Tensor, window_size: tuple[int, int, int]
 ) -> torch.Tensor:
     B, D, H, W, C = x.shape
     wD, wH, wW = window_size
@@ -80,7 +80,7 @@ def window_partition(
 
 
 def window_reverse(
-    windows: torch.Tensor, window_size: Tuple[int, int, int], D: int, H: int, W: int
+    windows: torch.Tensor, window_size: tuple[int, int, int], D: int, H: int, W: int
 ) -> torch.Tensor:
     wD, wH, wW = window_size
     B = int(windows.shape[0] / (D * H * W / (wD * wH * wW)))
@@ -90,10 +90,10 @@ def window_reverse(
 
 
 def get_window_size_and_shift(
-    x_size: Tuple[int, int, int],
-    window_size: Tuple[int, int, int],
-    shift_size: Tuple[int, int, int],
-) -> Tuple[Tuple[int, int, int], Tuple[int, int, int]]:
+    x_size: tuple[int, int, int],
+    window_size: tuple[int, int, int],
+    shift_size: tuple[int, int, int],
+) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
     use_window_size = list(window_size)
     use_shift_size = list(shift_size)
     for i in range(len(x_size)):
@@ -107,7 +107,7 @@ class WindowAttention3D(nn.Module):
     def __init__(
         self,
         dim: int,
-        window_size: Tuple[int, int, int],
+        window_size: tuple[int, int, int],
         num_heads: int,
         qkv_bias: bool = True,
         attn_drop: float = 0.0,
@@ -160,7 +160,7 @@ class WindowAttention3D(nn.Module):
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(
-        self, x: torch.Tensor, mask: Optional[torch.Tensor] = None
+        self, x: torch.Tensor, mask: torch.Tensor | None = None
     ) -> torch.Tensor:
         B_, N, C = x.shape
         qkv = (
@@ -204,8 +204,8 @@ class SwinTransformerBlock(nn.Module):
         self,
         dim: int,
         num_heads: int,
-        window_size: Tuple[int, int, int],
-        shift_size: Tuple[int, int, int],
+        window_size: tuple[int, int, int],
+        shift_size: tuple[int, int, int],
         mlp_ratio: float = 4.0,
         qkv_bias: bool = True,
         drop: float = 0.0,
@@ -217,7 +217,7 @@ class SwinTransformerBlock(nn.Module):
         stable_lam: float = 1.0,
         stable_beta: float = 0.0,
         use_shakedrop: bool = False,
-        shakedrop_alpha_range: Tuple[float, float] = (-1.0, 1.0),
+        shakedrop_alpha_range: tuple[float, float] = (-1.0, 1.0),
         layer_scale: bool = False,
         layer_scale_init_value: float = 1e-5,
         post_norm: bool = False,
@@ -266,9 +266,9 @@ class SwinTransformerBlock(nn.Module):
         self.ls2 = create_layerscale(dim, layer_scale, layer_scale_init_value)
 
     def forward(
-        self, x: torch.Tensor, mask_matrix: Optional[torch.Tensor]
+        self, x: torch.Tensor, mask_matrix: torch.Tensor | None
     ) -> torch.Tensor:
-        B, D, H, W, C = x.shape
+        _B, D, H, W, _C = x.shape
         shortcut = x
 
         if self.post_norm:
@@ -388,20 +388,20 @@ class BasicLayer(nn.Module):
         dim: int,
         depth: int,
         num_heads: int,
-        window_size: Tuple[int, int, int],
+        window_size: tuple[int, int, int],
         mlp_ratio: float = 4.0,
         qkv_bias: bool = True,
         drop: float = 0.0,
         attn_drop: float = 0.0,
-        drop_path: Union[float, List[float]] = 0.0,
+        drop_path: float | list[float] = 0.0,
         norm_layer: Callable[..., nn.Module] = nn.LayerNorm,
-        downsample: Optional[Callable[..., nn.Module]] = None,
+        downsample: Callable[..., nn.Module] | None = None,
         use_checkpoint: bool = False,
         enable_stable: bool = False,
         stable_lam: float = 1.0,
         stable_beta: float = 0.0,
         use_shakedrop: bool = False,
-        shakedrop_alpha_range: Tuple[float, float] = (-1.0, 1.0),
+        shakedrop_alpha_range: tuple[float, float] = (-1.0, 1.0),
         layer_scale: bool = False,
         layer_scale_init_value: float = 1e-5,
         post_norm: bool = False,
@@ -451,7 +451,7 @@ class BasicLayer(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        B, C, D, H, W = x.shape
+        _B, _C, D, H, W = x.shape
         x = rearrange(x, "b c d h w -> b d h w c")
 
         pad_d = (self.window_size[0] - D % self.window_size[0]) % self.window_size[0]
@@ -487,9 +487,9 @@ class BasicLayer(nn.Module):
 
             mask_windows = window_partition(img_mask, self.window_size).squeeze(-1)
             attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
-            attn_mask = attn_mask.masked_fill(
-                attn_mask != 0, float(-100.0)
-            ).masked_fill(attn_mask == 0, float(0.0))
+            attn_mask = attn_mask.masked_fill(attn_mask != 0, (-100.0)).masked_fill(
+                attn_mask == 0, 0.0
+            )
 
         for i, blk in enumerate(self.blocks):
             current_mask = (
@@ -517,10 +517,10 @@ class BasicLayer(nn.Module):
 class PatchEmbed3D(nn.Module):
     def __init__(
         self,
-        patch_size: Tuple[int, int, int] = (4, 4, 4),
+        patch_size: tuple[int, int, int] = (4, 4, 4),
         in_channels: int = 1,
         embed_dim: int = 96,
-        norm_layer: Optional[Callable[..., nn.Module]] = None,
+        norm_layer: Callable[..., nn.Module] | None = None,
     ):
         super().__init__()
         self.patch_size = patch_size
@@ -551,7 +551,7 @@ class PatchMerging(nn.Module):
         self.norm = norm_layer(8 * dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        B, D, H, W, C = x.shape
+        _B, D, H, W, _C = x.shape
 
         pad_input = (D % 2 == 1) or (H % 2 == 1) or (W % 2 == 1)
         if pad_input:
@@ -575,12 +575,12 @@ class PatchMerging(nn.Module):
 class SwinTransformer3DBackbone(nn.Module):
     def __init__(
         self,
-        patch_size: List[int],
+        patch_size: list[int],
         in_channels: int,
         embed_dim: int,
-        depths: List[int],
-        num_heads: List[int],
-        window_size: List[int],
+        depths: list[int],
+        num_heads: list[int],
+        window_size: list[int],
         mlp_ratio: float = 4.0,
         qkv_bias: bool = True,
         dropout: float = 0.0,
@@ -592,7 +592,7 @@ class SwinTransformer3DBackbone(nn.Module):
         stable_k: float = 2.0,
         stable_alpha: float = 1.0,
         use_shakedrop: bool = False,
-        shakedrop_alpha_range: Tuple[float, float] = (-1.0, 1.0),
+        shakedrop_alpha_range: tuple[float, float] = (-1.0, 1.0),
         layer_scale: bool = False,
         layer_scale_init_value: float = 1e-5,
         post_norm: bool = False,
@@ -701,13 +701,13 @@ class SwinTransformer3DBackbone(nn.Module):
 class SwinTransformer(nn.Module):
     def __init__(
         self,
-        patch_size: List[int],
+        patch_size: list[int],
         in_channels: int,
         num_classes: int,
         embed_dim: int,
-        depths: List[int],
-        num_heads: List[int],
-        window_size: List[int],
+        depths: list[int],
+        num_heads: list[int],
+        window_size: list[int],
         mlp_ratio: float,
         qkv_bias: bool,
         dropout: float,
@@ -719,7 +719,7 @@ class SwinTransformer(nn.Module):
         stable_k: float = 2.0,
         stable_alpha: float = 1.0,
         use_shakedrop: bool = False,
-        shakedrop_alpha_range: Tuple[float, float] = (-1.0, 1.0),
+        shakedrop_alpha_range: tuple[float, float] = (-1.0, 1.0),
         layer_scale: bool = False,
         layer_scale_init_value: float = 1e-5,
         post_norm: bool = False,

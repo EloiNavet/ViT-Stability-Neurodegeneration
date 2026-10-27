@@ -1,32 +1,33 @@
 import argparse
+import logging
 import os
 import pickle
-import logging
-import numpy as np
-import wandb as w
+import sys
 from pathlib import Path
+from typing import Literal
+
+import numpy as np
 import optuna
+import wandb as w
 from optuna.samplers import TPESampler
-from sklearn.svm import SVC
+from sklearn.inspection import permutation_importance
 from sklearn.metrics import (
     accuracy_score,
-    balanced_accuracy_score,
-    matthews_corrcoef,
-    roc_auc_score,
-    f1_score,
     average_precision_score,
+    balanced_accuracy_score,
+    f1_score,
+    log_loss,
+    matthews_corrcoef,
     precision_score,
     recall_score,
-    log_loss,
+    roc_auc_score,
 )
 from sklearn.preprocessing import StandardScaler, label_binarize
-from sklearn.inspection import permutation_importance
-from typing import Literal
-import sys
+from sklearn.svm import SVC
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from utils import get_train_val_test, dir_path
-from dataset.preprocessing import DataPrepaSVM, LABELS_SLANT, load_svm_features
+from dataset.preprocessing import LABELS_SLANT, DataPrepaSVM, load_svm_features
+from utils import dir_path, get_train_val_test
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 logging.getLogger("optuna").setLevel(logging.WARNING)
@@ -73,6 +74,12 @@ def get_args() -> argparse.Namespace:
         type=str,
         default="all",
         help='Fold to train on. Use "all" to train on all 10 folds.',
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Seed of the SVM classifier and of its hyperparameter search.",
     )
     parser.add_argument(
         "--n-trials",
@@ -137,6 +144,7 @@ def compute_feature_importance(
     Y_val: np.ndarray,
     kernel: str,
     n_repeats: int = 10,
+    seed: int = 42,
 ) -> np.ndarray:
     """
     Compute feature importance for any kernel type.
@@ -156,6 +164,8 @@ def compute_feature_importance(
         Kernel type ('linear', 'rbf', 'poly')
     n_repeats : int
         Number of permutations for importance calculation
+    seed : int
+        Seed of the permutations
 
     Returns
     -------
@@ -170,7 +180,7 @@ def compute_feature_importance(
             X_val,
             Y_val,
             n_repeats=n_repeats,
-            random_state=42,
+            random_state=seed,
             n_jobs=-1,
         )
         importances = perm_importance.importances_mean
@@ -197,6 +207,7 @@ def train_svm_optuna(
         "precision",
         "recall",
     ] = "bacc",
+    seed: int = 42,
 ) -> float:
     """
     Train SVM using Optuna Bayesian optimization (TPE sampler).
@@ -220,6 +231,8 @@ def train_svm_optuna(
         Number of Optuna trials
     metric : str
         Metric to optimize
+    seed : int
+        Seed of the SVM classifier and of the TPE sampler
 
     Returns
     -------
@@ -247,7 +260,7 @@ def train_svm_optuna(
             "C": C,
             "kernel": kernel,
             "decision_function_shape": "ovr",
-            "random_state": 42,
+            "random_state": seed,
             "probability": True,
         }
 
@@ -285,7 +298,7 @@ def train_svm_optuna(
     # Create Optuna study with TPE sampler
     study = optuna.create_study(
         direction="maximize",
-        sampler=TPESampler(),
+        sampler=TPESampler(seed=seed),
     )
 
     logger.info(f"Optimizing fold {fold} ({n_trials} trials)...")
@@ -312,6 +325,7 @@ def train_svm_optuna(
         Y_val,
         best_params["kernel"],
         n_repeats=10,
+        seed=seed,
     )
 
     # Map feature indices to actual brain region names from LABELS_SLANT
@@ -387,6 +401,7 @@ def train_single_fold(
         w.run.id,
         n_trials=args.n_trials,
         metric=args.metric,
+        seed=args.seed,
     )
 
     w.finish()
@@ -441,9 +456,9 @@ def main():
 
     # Summary statistics if training on all folds
     if len(folds_to_train) > 1:
-        logger.info(f"{'='*60}")
+        logger.info(f"{'=' * 60}")
         logger.info("Training Summary")
-        logger.info(f"{'='*60}")
+        logger.info(f"{'=' * 60}")
         logger.info(
             f"Mean validation metric: {np.mean(val_metrics):.4f} ± {np.std(val_metrics):.4f}"
         )
@@ -453,20 +468,19 @@ def main():
         logger.info(
             f"Worst fold: {np.argmin(val_metrics)} (metric: {np.min(val_metrics):.4f})"
         )
-        logger.info(f"{'='*60}")
-
+        logger.info(f"{'=' * 60}")
 
 
 if __name__ == "__main__":
     main()
 
 # Example usage:
-# python train/train_svm.py \\
-#   --training-csv-dir /path/to/10fold_CV/ \\
-#   --save-dir /path/to/saved_models/svm/ \\
-#   --intermediate-dir /path/to/intermediate/svm/ \\
-#   --runname experiment-name \\
-#   --fold all \\
-#   --n-trials 100 \\
-#   --metric bacc \\
+# python train/train_svm.py \
+#   --training-csv-dir /path/to/10fold_CV/ \
+#   --save-dir /path/to/saved_models/svm/ \
+#   --intermediate-dir /path/to/intermediate/svm/ \
+#   --runname experiment-name \
+#   --fold all \
+#   --n-trials 100 \
+#   --metric bacc \
 #   --wandb-mode online

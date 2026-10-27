@@ -4,7 +4,7 @@ import copy
 from collections import deque
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 
 class EMAModel:
@@ -47,27 +47,8 @@ class EMAModel:
         # Store EMA weights on CPU to save GPU memory
         self.model_state = {k: v.clone() for k, v in initial_state.items()}
 
-        # Register hooks to collect gradients
-        self.collected_params: dict[str, torch.Tensor] = {}
-        self._register_hooks(model)
-
         # Add storage for original weights
         self.orig_state = None
-
-    def _register_hooks(self, model: nn.Module) -> None:
-        """Register forward hooks to collect parameters."""
-
-        def _hook(module: nn.Module, *_):
-            # Only collect if module has weight and it has a device
-            if hasattr(module, "weight") and module.weight is not None:
-                device = module.weight.device
-                if device not in self.collected_params:
-                    self.collected_params[device] = []
-                self.collected_params[device].append(module.weight)
-
-        for module in model.modules():
-            if hasattr(module, "weight"):
-                module.register_forward_hook(_hook)
 
     @torch.no_grad()
     def update(self, model: nn.Module) -> None:
@@ -154,6 +135,14 @@ class EMAModel:
         data_loader : torch.utils.data.DataLoader
             DataLoader to compute new statistics
         """
+        has_running_stats = any(
+            getattr(module, "track_running_stats", False)
+            and getattr(module, "running_mean", None) is not None
+            for module in model.modules()
+        )
+        if not has_running_stats:
+            return
+
         # Store original model state
         original_state = copy.deepcopy(model.state_dict())
 
@@ -171,7 +160,7 @@ class EMAModel:
 
         # Store updated BN stats in EMA state
         for name, param in model.state_dict().items():
-            if "running_" in name or "batch_norm" in name:
+            if "running_" in name or "num_batches_tracked" in name:
                 self.model_state[name] = param.cpu().clone()
 
         # Restore original model state

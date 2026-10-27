@@ -1,10 +1,8 @@
 import torch
-import torch.nn as nn
-from typing import Optional
-
 from timm.layers import to_3tuple
+from torch import nn
 
-__all__ = ["PointWHD", "PatchCenterOffset"]
+__all__ = ["PatchCenterOffset", "PointWHD"]
 
 
 class PointWHD(nn.Module):
@@ -33,8 +31,8 @@ class PointWHD(nn.Module):
         self,
         input_size: tuple[int, int, int],
         patch_count: tuple[int, int, int],
-        weights: Optional[tuple[float, float, float]] = None,
-        tanh: Optional[bool] = None,
+        weights: tuple[float, float, float] | None = None,
+        tanh: bool | None = None,
     ):
         super().__init__()
         self.input_size = to_3tuple(input_size)
@@ -59,7 +57,7 @@ class PointWHD(nn.Module):
 
     @torch.amp.autocast("cuda", enabled=False)
     def forward(
-        self, deform_logits: torch.Tensor, model_offset: Optional[torch.Tensor] = None
+        self, deform_logits: torch.Tensor, model_offset: torch.Tensor | None = None
     ) -> torch.Tensor:
         """
         Forward pass to decode deformation logits into centers.
@@ -173,9 +171,9 @@ class PatchCenterOffset(PointWHD):
         self,
         input_size: tuple[int, int, int],
         patch_count: tuple[int, int, int],
-        weights: Optional[tuple[float, float, float]] = (2.0, 2.0, 2.0),
-        pts: Optional[tuple[int, int, int]] = (1, 1, 1),
-        tanh: Optional[bool] = True,
+        weights: tuple[float, float, float] | None = (2.0, 2.0, 2.0),
+        pts: tuple[int, int, int] | None = (1, 1, 1),
+        tanh: bool | None = True,
     ):
         super().__init__(
             input_size=input_size, patch_count=patch_count, weights=weights, tanh=tanh
@@ -186,7 +184,7 @@ class PatchCenterOffset(PointWHD):
 
     @torch.amp.autocast("cuda", enabled=False)
     def forward(
-        self, deform_logits: torch.Tensor, model_offset: Optional[torch.Tensor] = None
+        self, deform_logits: torch.Tensor, model_offset: torch.Tensor | None = None
     ) -> torch.Tensor:
         """
         Forward pass to decode deformation logits into points.

@@ -271,15 +271,21 @@ for pid in "${PIDS[@]}"; do
     wait $pid || FAIL=1
 done
 trap - INT TERM
+PIDS=()
+
+if [ $FAIL -ne 0 ]; then
+    echo "One or more evaluations failed."
+    exit 1
+fi
 
 # Example usage:
-# ./scripts/transformer.sh \\
-#     --training-csv-dir /path/to/10fold_CV/ \\
-#     --save-dir /path/to/saved_models/ \\
-#     --intermediate-dir /path/to/intermediate/ \\
-#     --runname experiment-name \\
-#     --eval-csv /path/to/test.csv \\
-#     --wandb-mode online \\
-#     --project-name MyProject \\
-#     --cuda-devices 0,1 \\
+# ./scripts/transformer.sh \
+#     --training-csv-dir /path/to/10fold_CV/ \
+#     --save-dir /path/to/saved_models/ \
+#     --intermediate-dir /path/to/intermediate/ \
+#     --runname experiment-name \
+#     --eval-csv /path/to/test.csv \
+#     --wandb-mode online \
+#     --project-name MyProject \
+#     --cuda-devices 0,1 \
 #     --config configs/swin-5c-no_seed-baseline.yaml

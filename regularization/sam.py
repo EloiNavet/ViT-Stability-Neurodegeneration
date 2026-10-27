@@ -2,8 +2,10 @@
 Sharpness Aware Minimization from https://github.com/davda54/sam/blob/main/sam.py
 """
 
+from collections.abc import Callable
+from typing import Any
+
 import torch
-from typing import Callable, Optional, Any, Dict, Type
 
 
 class SAM(torch.optim.Optimizer):
@@ -21,7 +23,7 @@ class SAM(torch.optim.Optimizer):
     def __init__(
         self,
         params,
-        base_optimizer: Type[torch.optim.Optimizer],
+        base_optimizer: type[torch.optim.Optimizer],
         rho: float = 0.05,
         adaptive: bool = False,
         **kwargs,
@@ -29,7 +31,7 @@ class SAM(torch.optim.Optimizer):
         assert rho >= 0.0, f"Invalid rho, should be non-negative: {rho}"
 
         defaults = dict(rho=rho, adaptive=adaptive, **kwargs)
-        super(SAM, self).__init__(params, defaults)
+        super().__init__(params, defaults)
 
         self.base_optimizer = base_optimizer(self.param_groups, **kwargs)
         self.param_groups = self.base_optimizer.param_groups
@@ -101,16 +103,16 @@ class SAM(torch.optim.Optimizer):
                 self.zero_grad()
 
     @torch.no_grad()
-    def step(self, closure: Optional[Callable[[], Any]] = None) -> None:
+    def step(self, closure: Callable[[], Any] | None = None) -> None:
         """
         Perform a SAM optimization step.
 
         Args:
             closure: A closure that reevaluates the model and returns the loss.
         """
-        assert (
-            closure is not None
-        ), "Sharpness Aware Minimization requires closure, but it was not provided"
+        assert closure is not None, (
+            "Sharpness Aware Minimization requires closure, but it was not provided"
+        )
         closure = torch.enable_grad()(
             closure
         )  # the closure should do a full forward-backward pass
@@ -154,7 +156,7 @@ class SAM(torch.optim.Optimizer):
 
         return norm
 
-    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
+    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
         """
         Load optimizer state.
 

@@ -15,8 +15,7 @@ channel, improving optimization flexibility while keeping negligible parameter o
 """
 
 import torch
-import torch.nn as nn
-from typing import Optional
+from torch import nn
 
 
 class LayerScale(nn.Module):
@@ -56,7 +55,7 @@ class LayerScale(nn.Module):
 
 def create_layerscale(
     dim: int, layer_scale: bool = False, init_value: float = 1e-5
-) -> Optional[nn.Module]:
+) -> nn.Module | None:
     """Factory function to create LayerScale module or None.
 
     Args:

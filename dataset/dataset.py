@@ -3,8 +3,8 @@
 import os
 import random
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -18,7 +18,7 @@ from utils.seed import _MAX_UINT32
 
 def load_metadata(
     metadata_paths: str | list[str] | pd.DataFrame | pd.Series,
-    accept_datasets: list[str] = None,
+    accept_datasets: list[str] | None = None,
 ) -> pd.DataFrame:
     """Load and concatenate metadata from CSV files or DataFrame."""
     if isinstance(metadata_paths, str):
@@ -48,11 +48,11 @@ class NormalDataset(Dataset):
         meta_data: pd.DataFrame,
         device: torch.device,
         diseases: list[str],
-        transform: Optional[callable] = None,
+        transform: Callable | None = None,
         preload: bool = False,
-        preload_transform: Optional[callable] = None,
+        preload_transform: Callable | None = None,
     ):
-        super(NormalDataset, self).__init__()
+        super().__init__()
 
         self.data_root = data_root
         self.meta_data = meta_data
@@ -156,7 +156,7 @@ class SVMDataset(Dataset):
         diseases: list[str],
         device: torch.device | str = "cpu",
     ):
-        super(SVMDataset, self).__init__()
+        super().__init__()
         self.data_root = data_root
         self.meta_data = meta_data
         self.device = torch.device(device) if isinstance(device, str) else device
@@ -190,10 +190,10 @@ class MRIMixUp(Dataset):
         num_samples: int,
         alpha: float,
         mixup_prob: float,
-        transform: Optional[torch.nn.Module] = None,
-        seed: Optional[int] = None,
+        transform: torch.nn.Module | None = None,
+        seed: int | None = None,
     ):
-        super(MRIMixUp, self).__init__()
+        super().__init__()
         assert 0 < alpha < 1, "alpha should be between 0 and 1"
         assert 0 <= mixup_prob <= 1, "mixup_prob should be between 0 and 1"
         assert num_samples > 0, "num_samples should be greater than 0"
@@ -304,10 +304,10 @@ class MRICutMix(Dataset):
         num_samples: int,
         alpha: float,
         cutmix_prob: float,
-        transform: Optional[callable] = None,
-        seed: Optional[int] = None,
+        transform: Callable | None = None,
+        seed: int | None = None,
     ):
-        super(MRICutMix, self).__init__()
+        super().__init__()
         assert 0 < alpha, "alpha should be greater than 0"
         assert 0 <= cutmix_prob <= 1, "cutmix_prob should be between 0 and 1"
         assert num_samples > 0, "num_samples should be greater than 0"
@@ -346,7 +346,7 @@ class MRICutMix(Dataset):
         self,
         shape: tuple[int, int, int, int],
         lam: float,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
     ) -> tuple[int, int, int, int, int, int]:
         """Compute cuboid boundaries for CutMix.
 

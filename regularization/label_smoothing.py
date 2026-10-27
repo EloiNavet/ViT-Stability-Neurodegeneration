@@ -1,8 +1,8 @@
 """Label smoothing loss for classification with soft targets."""
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 
 class LabelSmoothingLoss(nn.Module):

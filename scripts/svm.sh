@@ -34,6 +34,7 @@ function show_help {
     echo "  --project-name NAME       WandB project name"
     echo "  --n-trials INT            Number of Optuna trials"
     echo "  --fold STR                Fold to process (int or 'all')"
+    echo "  --seed INT                Seed of the SVM and of its search (optional, default 42)"
     echo "  -h, --help                Show this help message"
     exit 0
 }
@@ -50,6 +51,7 @@ while [[ "$#" -gt 0 ]]; do
         --project-name)     PROJECT_NAME="$2"; shift ;;
         --n-trials)         N_TRIALS="$2"; shift ;;
         --fold)             FOLD="$2"; shift ;;
+        --seed)             SEED="$2"; shift ;;
         -h|--help)          show_help ;;
         *) echo "Unknown parameter passed: $1"; show_help ;;
     esac
@@ -88,6 +90,7 @@ run_with_echo python train/train_svm.py \
   --fold "$FOLD" \
   --n-trials "$N_TRIALS" \
   --metric "$METRIC" \
+  --seed "${SEED:-42}" \
   --wandb-mode "$WANDB_MODE" \
   --project-name "$PROJECT_NAME"
 
@@ -112,13 +115,13 @@ run_with_echo python eval/eval_svm.py \
 # ==============================================================================
 # Example Usage
 # ==============================================================================
-# ./scripts/svm.sh \\
-#   --training-csv-dir /path/to/10fold_CV/ \\
-#   --save-dir /path/to/saved_models/svm/ \\
-#   --intermediate-dir /path/to/intermediate/svm/ \\
-#   --runname experiment-name \\
-#   --metric bacc \\
-#   --eval-csv /path/to/test.csv \\
-#   --wandb-mode online \\
-#   --project-name MyProject \\
+# ./scripts/svm.sh \
+#   --training-csv-dir /path/to/10fold_CV/ \
+#   --save-dir /path/to/saved_models/svm/ \
+#   --intermediate-dir /path/to/intermediate/svm/ \
+#   --runname experiment-name \
+#   --metric bacc \
+#   --eval-csv /path/to/test.csv \
+#   --wandb-mode online \
+#   --project-name MyProject \
 #   --n-trials 200

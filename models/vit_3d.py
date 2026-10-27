@@ -2,21 +2,23 @@
 3D Vision Transformer adapted from https://github.com/lucidrains/vit-pytorch/blob/main/vit_pytorch/vit_3d.py
 """
 
-from typing import Tuple, Literal, Dict, Optional
+from typing import Literal
+
 import torch
-from torch import nn
-import torch.utils.checkpoint as checkpoint
 from einops import rearrange, repeat
-from timm.layers import trunc_normal_, DropPath
 from einops.layers.torch import Rearrange
+from timm.layers import DropPath, trunc_normal_
+from torch import nn
+from torch.utils import checkpoint
+
 from models.modules.layerscale import create_layerscale
 from utils.stable_init import (
-    compute_residual_gains,
     apply_stable_residual,
+    compute_residual_gains,
     init_stable_model,
 )
 
-_VIT_CONFIGS: Dict[str, Dict[str, int]] = {
+_VIT_CONFIGS: dict[str, dict[str, int]] = {
     "S": {
         "depth": 12,
         "num_heads": 6,
@@ -111,9 +113,7 @@ class Attention(nn.Module):
         if self.post_norm:
             # Post-norm: compute attention first, then apply norm
             qkv = self.to_qkv(x).chunk(3, dim=-1)
-            q, k, v = map(
-                lambda t: rearrange(t, "b n (h d) -> b h n d", h=self.heads), qkv
-            )
+            q, k, v = (rearrange(t, "b n (h d) -> b h n d", h=self.heads) for t in qkv)
 
             dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
 
@@ -128,9 +128,7 @@ class Attention(nn.Module):
             # Pre-norm: apply norm first
             x = self.norm(x)
             qkv = self.to_qkv(x).chunk(3, dim=-1)
-            q, k, v = map(
-                lambda t: rearrange(t, "b n (h d) -> b h n d", h=self.heads), qkv
-            )
+            q, k, v = (rearrange(t, "b n (h d) -> b h n d", h=self.heads) for t in qkv)
 
             dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
 
@@ -289,8 +287,8 @@ class ViT(nn.Module):
     def __init__(
         self,
         *,
-        img_size: Tuple[int, int, int],
-        patch_size: Tuple[int, int, int],
+        img_size: tuple[int, int, int],
+        patch_size: tuple[int, int, int],
         num_classes: int,
         embed_dim: int,
         depth: int,
@@ -461,10 +459,10 @@ class ViTX(ViT):
     def __init__(
         self,
         config_name: str,
-        img_size: Tuple[int, int, int],
-        patch_size: Tuple[int, int, int],
+        img_size: tuple[int, int, int],
+        patch_size: tuple[int, int, int],
         num_classes: int,
-        mlp_ratio: Optional[float] = None,
+        mlp_ratio: float | None = None,
         dropout: float = 0.0,
         attention_dropout: float = 0.0,
         stochastic_depth_prob: float = 0.0,
@@ -509,19 +507,19 @@ class ViTX(ViT):
 
 class ViTS(ViTX):
     def __init__(self, *args, **kwargs):
-        super().__init__(config_name="S", *args, **kwargs)
+        super().__init__(*args, config_name="S", **kwargs)
 
 
 class ViTB(ViTX):
     def __init__(self, *args, **kwargs):
-        super().__init__(config_name="B", *args, **kwargs)
+        super().__init__(*args, config_name="B", **kwargs)
 
 
 class ViTL(ViTX):
     def __init__(self, *args, **kwargs):
-        super().__init__(config_name="L", *args, **kwargs)
+        super().__init__(*args, config_name="L", **kwargs)
 
 
 class ViTH(ViTX):
     def __init__(self, *args, **kwargs):
-        super().__init__(config_name="H", *args, **kwargs)
+        super().__init__(*args, config_name="H", **kwargs)

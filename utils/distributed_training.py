@@ -112,9 +112,7 @@ def is_dist_avail_and_initialized():
     bool
         True if distributed training is available and initialized, False otherwise.
     """
-    if not dist.is_available() or not dist.is_initialized():
-        return False
-    return True
+    return not (not dist.is_available() or not dist.is_initialized())
 
 
 def get_rank():

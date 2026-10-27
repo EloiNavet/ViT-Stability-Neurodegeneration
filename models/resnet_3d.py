@@ -2,11 +2,12 @@
 https://github.com/dongzhuoyao/3D-ResNets-PyTorch/blob/master/models/resnet.py
 """
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.autograd import Variable
 from functools import partial
+
+import torch
+import torch.nn.functional as F
+from torch import nn
+from torch.autograd import Variable
 
 __all__ = [
     "ResNet",
@@ -44,7 +45,7 @@ class BasicBlock(nn.Module):
     expansion = 1
 
     def __init__(self, inplanes, planes, stride=1, downsample=None):
-        super(BasicBlock, self).__init__()
+        super().__init__()
         self.conv1 = conv3x3x3(inplanes, planes, stride)
         self.bn1 = nn.BatchNorm3d(planes)
         self.relu = nn.ReLU(inplace=False)
@@ -76,7 +77,7 @@ class Bottleneck(nn.Module):
     expansion = 4
 
     def __init__(self, inplanes, planes, stride=1, downsample=None):
-        super(Bottleneck, self).__init__()
+        super().__init__()
         self.conv1 = nn.Conv3d(inplanes, planes, kernel_size=1, bias=False)
         self.bn1 = nn.BatchNorm3d(planes)
         self.conv2 = nn.Conv3d(
@@ -124,7 +125,7 @@ class ResNet(nn.Module):
         in_channels=3,
     ):
         self.inplanes = 64
-        super(ResNet, self).__init__()
+        super().__init__()
         self.conv1 = nn.Conv3d(
             in_channels,
             64,
@@ -206,7 +207,7 @@ def get_fine_tuning_parameters(model, ft_begin_index):
 
     ft_module_names = []
     for i in range(ft_begin_index, 5):
-        ft_module_names.append("layer{}".format(i))
+        ft_module_names.append(f"layer{i}")
     ft_module_names.append("fc")
 
     parameters = []

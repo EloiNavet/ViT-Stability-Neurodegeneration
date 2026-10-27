@@ -274,20 +274,19 @@ def stringify_object(obj, level=0):
 
     dict_obj = {}
     for i, o in enumerate(obj):
-        if getattr(o, "__dict__", None):
-            if getattr(o, "__class__", None):
-                key = f"{i}_{str(o.__class__).split('.')[-1][:-2]}"
-                key = key.replace("'", "")
-                val = {}
-                dct = o.__dict__
-                for k, v in dct.items():
-                    if k.startswith("_") or k in ["R", "dtype"]:
-                        continue
-                    if isinstance(v, torch.Tensor):
-                        val[k] = str(v)
-                    else:
-                        val[k] = stringify_object(v, level + 1)
-                dict_obj[key] = val
+        if getattr(o, "__dict__", None) and getattr(o, "__class__", None):
+            key = f"{i}_{str(o.__class__).split('.')[-1][:-2]}"
+            key = key.replace("'", "")
+            val = {}
+            dct = o.__dict__
+            for k, v in dct.items():
+                if k.startswith("_") or k in ["R", "dtype"]:
+                    continue
+                if isinstance(v, torch.Tensor):
+                    val[k] = str(v)
+                else:
+                    val[k] = stringify_object(v, level + 1)
+            dict_obj[key] = val
     return str(dict_obj)
 
 
@@ -433,7 +432,7 @@ def print_sensitivity(gt: np.ndarray, pred: np.ndarray, cls: int) -> float:
     """
     tp = ((gt == cls) & (pred == cls)).sum()
     fn = ((gt == cls) & (pred != cls)).sum()
-    sensitivity = tp / (tp + fn)
+    sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0.0
     return sensitivity
 
 

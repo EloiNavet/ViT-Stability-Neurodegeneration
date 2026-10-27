@@ -14,14 +14,14 @@ Reference: https://arxiv.org/abs/2403.04235
 """
 
 import math
+
 import torch
-import torch.nn as nn
-from typing import Tuple
+from torch import nn
 
 
 def compute_residual_gains(
     N: int, k: float = 2.0, alpha: float = 1.0
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """
     Compute λ and β for fully-normalized residual connections.
 
@@ -171,14 +171,15 @@ def init_stable_embeddings(
     """
     sigma_e2 = (1.0 - dropout_prob) / num_tables
     for name, m in module.named_modules():
-        if isinstance(m, (nn.Conv3d, nn.Conv2d, nn.Linear)):
-            # More explicit targeting: only initialize embedding/projection layers
-            if "patch_embed" in name.lower() or name.endswith("proj"):
-                fan_in = _fan_in(m)
-                std = math.sqrt(sigma_e2 / fan_in)
-                nn.init.normal_(m.weight, 0.0, std)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0.0)
+        # Only the embedding and projection layers are initialized here.
+        if isinstance(m, (nn.Conv3d, nn.Conv2d, nn.Linear)) and (
+            "patch_embed" in name.lower() or name.endswith("proj")
+        ):
+            fan_in = _fan_in(m)
+            std = math.sqrt(sigma_e2 / fan_in)
+            nn.init.normal_(m.weight, 0.0, std)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0.0)
 
 
 def init_stable_attention(attn_module: nn.Module, dropout_prob: float = 0.0):
@@ -302,7 +303,7 @@ def init_stable_model(
 
 def verify_stable_init(
     model: nn.Module,
-    input_shape: Tuple[int, ...],
+    input_shape: tuple[int, ...],
     device: str = "cuda",
     num_samples: int = 100,
     rtol: float = 0.5,
@@ -395,7 +396,7 @@ def verify_stable_init(
 
 def verify_stable_gradients(
     model: nn.Module,
-    input_shape: Tuple[int, ...],
+    input_shape: tuple[int, ...],
     device: str = "cuda",
     rtol: float = 1.0,
 ) -> dict:

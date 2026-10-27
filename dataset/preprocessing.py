@@ -1,5 +1,6 @@
 """Preprocessing pipeline for 3D brain MRI: NIfTI to PyTorch tensors."""
 
+import logging
 import os
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from monai.transforms import CenterSpatialCrop, Transform
 from nilearn.image import resample_img
 from tqdm import tqdm
 
+logger = logging.getLogger(__name__)
 
 # SLANT brain segmentation labels (133 regions)
 # Reference: https://github.com/MASILab/SLANTbrainSeg/blob/master/BrainColorLUT.txt
@@ -249,14 +251,15 @@ class DataPrepa:
             torch.save(image, output_path)
 
             return True
-        except Exception as e:
-            print(f"Error processing subject {subject_data.Subject}: {e}")
+        except Exception:
+            # One unreadable subject must not stop the others.
+            logger.exception("Error processing subject %s", subject_data.Subject)
             return False
 
     def preprocess_data(
         self,
         crop: tuple[int, int, int],
-        downsample: tuple[int, int, int] = None,
+        downsample: tuple[int, int, int] | None = None,
         tqdm_kwargs: dict[str, str | int] | None = None,
         n_jobs: int = -1,
         batch_size: int = 1,
@@ -338,9 +341,10 @@ class DataPrepa:
                     f"Processed {success_count} out of {len(metadata_to_process)} subjects successfully."
                 )
 
-        except Exception as e:
-            print(f"Parallel processing failed with error: {e}")
-            print("Falling back to sequential processing...")
+        except Exception:
+            logger.exception(
+                "Parallel processing failed, falling back to sequential processing"
+            )
 
             # Fall back to sequential processing if parallel fails
             results = []
@@ -524,8 +528,9 @@ class DataPrepaSVM:
             output_path = self.preprocess_data_dir / f"{subject_data.Subject}.pt"
             torch.save(avg_structure, output_path)
             return True
-        except Exception as e:
-            print(f"Error processing subject {subject_data.Subject}: {e}")
+        except Exception:
+            # One unreadable subject must not stop the others.
+            logger.exception("Error processing subject %s", subject_data.Subject)
             return False
 
     def _check_subjects_files_correspondence(self):

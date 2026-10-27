@@ -1,17 +1,17 @@
-from functools import partial
 import math
-from typing import Optional, Tuple, Union
+from functools import partial
+
 import torch
-from torch import nn
 from timm.layers import to_3tuple
+from torch import nn
 
 NORM_EPS = 1e-5
 
 
 def merge_pre_bn(
-    module: Union[nn.Linear, nn.Conv3d],
+    module: nn.Linear | nn.Conv3d,
     pre_bn_1: nn.BatchNorm3d,
-    pre_bn_2: Optional[nn.BatchNorm3d] = None,
+    pre_bn_2: nn.BatchNorm3d | None = None,
 ) -> None:
     """Merge batch normalization layers into preceding linear or conv layer for inference optimization.
 
@@ -88,7 +88,7 @@ def merge_pre_bn(
     module.bias.data = bias
 
 
-def _make_divisible(v: float, divisor: int, min_value: Optional[int] = None) -> int:
+def _make_divisible(v: float, divisor: int, min_value: int | None = None) -> int:
     """Make a value divisible by a divisor, ensuring it doesn't decrease by more than 10%.
 
     Used to ensure channel dimensions are compatible with hardware optimization constraints.
@@ -126,7 +126,7 @@ class h_sigmoid(nn.Module):
     """
 
     def __init__(self, inplace: bool = True) -> None:
-        super(h_sigmoid, self).__init__()
+        super().__init__()
         self.relu = nn.ReLU6(inplace=inplace)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -152,7 +152,7 @@ class h_swish(nn.Module):
     """
 
     def __init__(self, inplace: bool = True) -> None:
-        super(h_swish, self).__init__()
+        super().__init__()
         self.sigmoid = h_sigmoid(inplace=inplace)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -191,8 +191,8 @@ class ECALayer(nn.Module):
     def __init__(
         self, channel: int, gamma: int = 2, b: int = 1, sigmoid_type: str = "sigmoid"
     ) -> None:
-        super(ECALayer, self).__init__()
-        t = int(abs((math.log(channel, 2) + b) / gamma))
+        super().__init__()
+        t = int(abs((math.log2(channel) + b) / gamma))
         k = t if t % 2 else t + 1
 
         self.avg_pool = nn.AdaptiveAvgPool3d(1)
@@ -233,7 +233,7 @@ class SELayer(nn.Module):
     """
 
     def __init__(self, channel: int, reduction: int = 4) -> None:
-        super(SELayer, self).__init__()
+        super().__init__()
         self.avg_pool = nn.AdaptiveAvgPool3d(1)
         self.fc = nn.Sequential(
             nn.Linear(channel, channel // reduction),
@@ -279,11 +279,11 @@ class ConvBNReLU(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: Union[int, Tuple[int, int, int]],
-        stride: Union[int, Tuple[int, int, int]],
+        kernel_size: int | tuple[int, int, int],
+        stride: int | tuple[int, int, int],
         groups: int = 1,
     ) -> None:
-        super(ConvBNReLU, self).__init__()
+        super().__init__()
         kernel_size = to_3tuple(kernel_size)
         stride = to_3tuple(stride)
 
@@ -332,9 +332,9 @@ class PatchEmbed(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        stride: Union[int, Tuple[int, int, int]] = 1,
+        stride: int | tuple[int, int, int] = 1,
     ) -> None:
-        super(PatchEmbed, self).__init__()
+        super().__init__()
         norm_layer = partial(nn.BatchNorm3d, eps=NORM_EPS)
 
         s = to_3tuple(stride)
@@ -386,7 +386,7 @@ class MHCA(nn.Module):
     """
 
     def __init__(self, out_channels: int, head_dim: int) -> None:
-        super(MHCA, self).__init__()
+        super().__init__()
         norm_layer = partial(nn.BatchNorm3d, eps=NORM_EPS)
         self.group_conv3x3 = nn.Conv3d(
             out_channels,
@@ -450,15 +450,15 @@ class LocalityFeedForward(nn.Module):
         self,
         in_dim: int = 64,
         out_dim: int = 96,
-        kernel_size: Union[int, Tuple[int, int, int]] = 3,
-        stride: Union[int, Tuple[int, int, int]] = 1,
+        kernel_size: int | tuple[int, int, int] = 3,
+        stride: int | tuple[int, int, int] = 1,
         expand_ratio: float = 4.0,
         act: str = "hs+se",
         reduction: int = 4,
         wo_dp_conv: bool = False,
         dp_first: bool = False,
     ) -> None:
-        super(LocalityFeedForward, self).__init__()
+        super().__init__()
         hidden_dim = int(in_dim * expand_ratio)
 
         kernel_size = to_3tuple(kernel_size)
@@ -504,9 +504,7 @@ class LocalityFeedForward(nn.Module):
                 sigmoid_activation = "sigmoid" if attn_type == "eca" else "h_sigmoid"
                 layers.append(ECALayer(hidden_dim, sigmoid_type=sigmoid_activation))
             else:
-                raise NotImplementedError(
-                    "Activation type {} is not implemented".format(act)
-                )
+                raise NotImplementedError(f"Activation type {act} is not implemented")
 
         # the second linear layer is replaced by 1x1x1 convolution.
         layers.extend(
@@ -548,8 +546,8 @@ class Mlp(nn.Module):
     def __init__(
         self,
         in_features: int,
-        out_features: Optional[int] = None,
-        mlp_ratio: Optional[float] = None,
+        out_features: int | None = None,
+        mlp_ratio: float | None = None,
         dropout: float = 0.0,
         bias: bool = True,
     ) -> None:
@@ -611,10 +609,10 @@ class E_MHSA(nn.Module):
     def __init__(
         self,
         dim: int,
-        out_dim: Optional[int] = None,
+        out_dim: int | None = None,
         head_dim: int = 32,
         qkv_bias: bool = True,
-        qk_scale: Optional[float] = None,
+        qk_scale: float | None = None,
         attention_dropout: float = 0,
         proj_drop: float = 0.0,
         sr_ratio: int = 1,
@@ -731,11 +729,7 @@ def initialize_weights(model: nn.Module) -> None:
         ):
             nn.init.constant_(m.weight, 1.0)
             nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=0.02)
-            if hasattr(m, "bias") and m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, (nn.Conv2d, nn.Conv3d)):
+        elif isinstance(m, (nn.Linear, nn.Conv2d, nn.Conv3d)):
             trunc_normal_(m.weight, std=0.02)
             if hasattr(m, "bias") and m.bias is not None:
                 nn.init.constant_(m.bias, 0)

@@ -8,7 +8,7 @@ For access to the full implementation, please contact the authors.
 """
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 
 class _SwinTransformerStub(nn.Module):
@@ -31,8 +31,8 @@ SwinTransformerB = _SwinTransformerStub
 SwinTransformerL = _SwinTransformerStub
 
 __all__ = [
-    "SwinTransformerT",
-    "SwinTransformerS",
     "SwinTransformerB",
     "SwinTransformerL",
+    "SwinTransformerS",
+    "SwinTransformerT",
 ]

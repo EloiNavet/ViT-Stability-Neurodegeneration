@@ -1,14 +1,13 @@
-import torch
-import torch.nn as nn
-from typing import List, Tuple, Optional
 import numpy as np
+import torch
 from monai.transforms import (
-    Compose,
-    RandFlip,
-    RandAffine,
     CenterSpatialCrop,
+    Compose,
+    RandAffine,
+    RandFlip,
     Resize,
 )
+from torch import nn
 
 
 class TestTimeAugmentation:
@@ -85,9 +84,9 @@ class TestTimeAugmentation:
         use_affine: bool = True,
         use_scaled_center_crop: bool = True,
         crop_roi_scale: float = 0.9,
-        affine_rotate_range: Tuple[float, float, float] = (3.0, 3.0, 3.0),
-        affine_translate_range: Tuple[float, float, float] = (5.0, 5.0, 5.0),
-        target_shape: Optional[Tuple[int, int, int]] = None,
+        affine_rotate_range: tuple[float, float, float] = (3.0, 3.0, 3.0),
+        affine_translate_range: tuple[float, float, float] = (5.0, 5.0, 5.0),
+        target_shape: tuple[int, int, int] | None = None,
         use_amp: bool = False,
         use_channels_last: bool = True,
         use_entropy_weighting: bool = True,
@@ -111,9 +110,9 @@ class TestTimeAugmentation:
 
     def _build_transforms(
         self,
-        rotate_range: Tuple[float, float, float],
-        translate_range: Tuple[float, float, float],
-    ) -> List[Compose]:
+        rotate_range: tuple[float, float, float],
+        translate_range: tuple[float, float, float],
+    ) -> list[Compose]:
         """
         Build a list of augmentation transforms based on configuration.
 
@@ -171,7 +170,7 @@ class TestTimeAugmentation:
 
         return transforms_list
 
-    def _get_crop_transform(self, input_shape: Tuple[int, int, int, int]) -> Compose:
+    def _get_crop_transform(self, input_shape: tuple[int, int, int, int]) -> Compose:
         """
         Get crop transform.
 
@@ -248,17 +247,15 @@ class TestTimeAugmentation:
             is_stochastic = False
             if hasattr(transform, "transforms") and len(transform.transforms) > 0:
                 for t in transform.transforms:
-                    if hasattr(t, "prob"):
-                        # It's a MONAI RandXXX transform
-                        # RandAffine is stochastic even with prob=1.0 (random rotations/translations)
-                        # RandFlip with prob=1.0 is deterministic (always flips)
-                        if "Affine" in t.__class__.__name__ and t.prob > 0:
-                            is_stochastic = True
-                            break
-                        # For other Rand transforms, only consider stochastic if prob < 1.0
-                        elif t.prob < 1.0:
-                            is_stochastic = True
-                            break
+                    # A MONAI RandXXX transform. RandAffine is stochastic even with
+                    # prob=1.0 (random rotations/translations), whereas RandFlip with
+                    # prob=1.0 is deterministic (always flips).
+                    if hasattr(t, "prob") and (
+                        ("Affine" in t.__class__.__name__ and t.prob > 0)
+                        or t.prob < 1.0
+                    ):
+                        is_stochastic = True
+                        break
 
             num_applications = self.num_samples if is_stochastic else 1
 
